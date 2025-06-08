@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package unit.containers.v0;
+
+service Ormos {
+  rpc ListUsbDevices (ListUsbDevicesRequest) returns (ListUsbDevicesResponse) {}
+}
+
+message ListUsbDevicesRequest {}
+
+message ListUsbDevicesResponse {
+  repeated UsbDevice devices = 1;
+}
+
+message UsbDevice {
+  string device_path = 1;
+  bool is_mounted = 2;
+  string mount_point = 3;
+}
