@@ -4,12 +4,33 @@ package unit.containers.v0;
 
 service Ormos {
   rpc ListUsbDevices (ListUsbDevicesRequest) returns (ListUsbDevicesResponse) {}
+  rpc MountUsbDevice (MountUsbDeviceRequest) returns (MountUsbDeviceResponse) {}
+  rpc UnmountUsbDevice (UnmountUsbDeviceRequest) returns (UnmountUsbDeviceResponse) {}
+}
+
+message MountUsbDeviceRequest {
+  string device_path = 1;
+  string mount_point = 2;
+}
+
+message MountUsbDeviceResponse {
+  bool is_success = 1;
+  string error_message = 2;
 }
 
 message ListUsbDevicesRequest {}
 
 message ListUsbDevicesResponse {
   repeated UsbDevice devices = 1;
+}
+
+message UnmountUsbDeviceRequest {
+  string mount_point = 1;
+}
+
+message UnmountUsbDeviceResponse {
+  bool is_success = 1;
+  string error_message = 2;
 }
 
 message UsbDevice {

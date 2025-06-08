@@ -1,8 +1,9 @@
 use tonic::{transport::Server, Request, Response, Status};
 use skopos::ormos_server::{Ormos, OrmosServer};
-use skopos::{ListUsbDevicesRequest, ListUsbDevicesResponse, UsbDevice};
+use skopos::{ListUsbDevicesRequest, ListUsbDevicesResponse, UsbDevice, MountUsbDeviceRequest, MountUsbDeviceResponse, UnmountUsbDeviceRequest, UnmountUsbDeviceResponse};
 use std::io;
 use std::fs;
+use std::process::Command;
 
 pub mod skopos {
     tonic::include_proto!("unit.containers.v0");
@@ -94,6 +95,43 @@ fn create_usb_devices(device_paths: Vec<String>) -> Vec<UsbDevice> {
         .collect()
 }
 
+fn mount_usb_device(device_path: &str, mount_point: &str) -> Result<(), io::Error> {
+    if let Some(parent) = std::path::Path::new(mount_point).parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::create_dir_all(mount_point)?;
+    
+    let output = Command::new("mount")
+        .arg(device_path)
+        .arg(mount_point)
+        .output()?;
+
+    if output.status.success() {
+        println!("Successfully mounted {} to {}", device_path, mount_point);
+        Ok(())
+    } else {
+        let error_msg = String::from_utf8_lossy(&output.stderr);
+        eprintln!("Mount failed: {}", error_msg);
+        Err(io::Error::new(io::ErrorKind::Other, error_msg.to_string()))
+    }
+}
+
+fn unmount_usb_device(mount_point: &str) -> Result<(), io::Error> {
+    let output = Command::new("umount")
+        .arg(mount_point)
+        .output()?;
+
+    if output.status.success() {
+        println!("Successfully unmounted {}", mount_point);
+        Ok(())
+    }
+    else {
+        let error_msg = String::from_utf8_lossy(&output.stderr);
+        eprintln!("Unmount failed: {}", error_msg);
+        Err(io::Error::new(io::ErrorKind::Other, error_msg.to_string()))
+    }
+}
+
 #[tonic::async_trait]
 impl Ormos for MyOrmos {
     async fn list_usb_devices(
@@ -110,6 +148,65 @@ impl Ormos for MyOrmos {
         };
         
         Ok(Response::new(response))
+    }
+    
+    async fn mount_usb_device(
+        &self,
+        request: Request<MountUsbDeviceRequest>,
+    ) -> Result<Response<MountUsbDeviceResponse>, Status> {
+        let req = request.into_inner();
+        let device_path = req.device_path;
+        let mount_point = if req.mount_point.is_empty() {
+            "/mnt/usb".to_string() // Default mount point
+        } else {
+            req.mount_point
+        };
+        
+        match mount_usb_device(&device_path, &mount_point) {
+            Ok(()) => {
+                let response = MountUsbDeviceResponse {
+                    is_success: true,
+                    error_message: String::new(),
+                };
+                Ok(Response::new(response))
+            }
+            Err(e) => {
+                let response = MountUsbDeviceResponse {
+                    is_success: false,
+                    error_message: e.to_string(),
+                };
+                Ok(Response::new(response))
+            }
+        }
+    }
+
+    async fn unmount_usb_device(
+        &self,
+        request: Request<UnmountUsbDeviceRequest>,
+    ) -> Result<Response<UnmountUsbDeviceResponse>, Status> {
+        let req = request.into_inner();
+        let mount_point = if req.mount_point.is_empty() {
+            "/mnt/usb".to_string() // Default mount point
+        } else {
+            req.mount_point
+        };
+
+        match unmount_usb_device(&mount_point) {
+            Ok(()) => {
+                let response = UnmountUsbDeviceResponse {
+                    is_success: true,
+                    error_message: String::new(),
+                };
+                Ok(Response::new(response))
+            }
+            Err(e) => {
+                let response = UnmountUsbDeviceResponse {
+                    is_success: false,
+                    error_message: e.to_string(),
+                };
+                Ok(Response::new(response))
+            }
+        }
     }
 }
 
