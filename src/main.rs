@@ -1,6 +1,6 @@
 use tonic::{transport::Server, Request, Response, Status};
 use skopos::ormos_server::{Ormos, OrmosServer};
-use skopos::{ListUsbDevicesRequest, ListUsbDevicesResponse, UsbDevice, MountUsbDeviceRequest, MountUsbDeviceResponse, UnmountUsbDeviceRequest, UnmountUsbDeviceResponse, ListImageArchivesRequest, ListImageArchivesResponse, ImageArchive, LoadImageArchiveRequest, LoadImageArchiveResponse};
+use skopos::{ListUsbDevicesRequest, ListUsbDevicesResponse, UsbDevice, MountUsbDeviceRequest, MountUsbDeviceResponse, UnmountUsbDeviceRequest, UnmountUsbDeviceResponse, ListImageArchivesRequest, ListImageArchivesResponse, ImageArchive, LoadImageArchiveRequest, LoadImageArchiveResponse, InspectImageArchiveRequest, InspectImageArchiveResponse};
 use std::io;
 use std::fs;
 use std::process::Command;
@@ -163,6 +163,22 @@ fn list_container_image_archives(dir_path: &str) -> std::io::Result<Vec<String>>
     Ok(images)
 }
 
+fn inspect_container_image_archive(path: &Path) -> std::io::Result<String> {
+    let output = Command::new("skopeo")
+        .arg("inspect")
+        .arg(format!("docker-archive:{}", path.display()))
+        .output()?;
+
+    if output.status.success() {
+        let inspect_msg = String::from_utf8_lossy(&output.stdout);
+        Ok(inspect_msg.to_string())
+    } else {
+        let error_msg = String::from_utf8_lossy(&output.stderr);
+        eprintln!("Insepct failed: {}", error_msg);
+        Err(io::Error::new(io::ErrorKind::Other, error_msg.to_string()))
+    }
+}
+
 fn create_container_image_archives(archive_paths: Vec<String>) -> Result<Vec<ImageArchive>, Box<dyn std::error::Error>> {
     archive_paths
         .into_iter()
@@ -318,6 +334,33 @@ impl Ormos for MyOrmos {
                 let response = LoadImageArchiveResponse {
                     is_success: false,
                     error_message: e.to_string(),
+                };
+                Ok(Response::new(response))
+            }
+        }
+    }
+
+    async fn inspect_image_archive(
+        &self,
+        request: Request<InspectImageArchiveRequest>,
+    ) -> Result<Response<InspectImageArchiveResponse>, Status> {
+        let req = request.into_inner();
+        let file_path = req.file_path;
+
+        match inspect_container_image_archive(Path::new(&file_path)) {
+            Ok(output) => {
+                let response = InspectImageArchiveResponse {
+                    is_success: true,
+                    stdout: output,
+                    stderr: String::new(),
+                };
+                Ok(Response::new(response))
+            }
+            Err(e) => {
+                let response = InspectImageArchiveResponse {
+                    is_success: false,
+                    stdout: String::new(),
+                    stderr: e.to_string(),
                 };
                 Ok(Response::new(response))
             }

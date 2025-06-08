@@ -9,6 +9,7 @@ service Ormos {
 
   rpc ListImageArchives (ListImageArchivesRequest) returns (ListImageArchivesResponse) {}
   rpc LoadImageArchive (LoadImageArchiveRequest) returns (LoadImageArchiveResponse) {}
+  rpc InspectImageArchive (InspectImageArchiveRequest) returns (InspectImageArchiveResponse) {}
 }
 
 message MountUsbDeviceRequest {
@@ -65,4 +66,14 @@ message LoadImageArchiveRequest {
 message LoadImageArchiveResponse {
   bool is_success = 1;
   string error_message = 2;
+}
+
+message InspectImageArchiveRequest {
+  string file_path = 1;
+}
+
+message InspectImageArchiveResponse {
+  bool is_success = 1;
+  string stdout = 2;
+  string stderr = 3;
 }
