@@ -37,3 +37,15 @@ Example output (device mounted):
   ]
 }
 ```
+
+### Mount USB Device
+Replace IP address accordingly.
+```bash
+grpcurl -plaintext -import-path ./proto -proto ormos.proto -d '{"device_path": "/dev/sda1", "mount_point": "/mnt/usb"}' '10.0.0.42:50052' unit.containers.v0.Ormos.MountUsbDevice
+```
+
+### Unmount USB Device
+Replace IP address accordingly.
+```bash
+grpcurl -plaintext -import-path ./proto -proto ormos.proto -d '{"mount_point": "/mnt/usb"}' '10.0.0.42:50052' unit.containers.v0.Ormos.UnmountUsbDevice
+```
