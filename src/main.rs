@@ -1,9 +1,11 @@
 use tonic::{transport::Server, Request, Response, Status};
 use skopos::ormos_server::{Ormos, OrmosServer};
-use skopos::{ListUsbDevicesRequest, ListUsbDevicesResponse, UsbDevice, MountUsbDeviceRequest, MountUsbDeviceResponse, UnmountUsbDeviceRequest, UnmountUsbDeviceResponse};
+use skopos::{ListUsbDevicesRequest, ListUsbDevicesResponse, UsbDevice, MountUsbDeviceRequest, MountUsbDeviceResponse, UnmountUsbDeviceRequest, UnmountUsbDeviceResponse, ListImageArchivesRequest, ListImageArchivesResponse, ImageArchive};
 use std::io;
 use std::fs;
 use std::process::Command;
+use std::path::Path;
+use sha2::{Sha256, Digest};
 
 pub mod skopos {
     tonic::include_proto!("unit.containers.v0");
@@ -132,6 +134,58 @@ fn unmount_usb_device(mount_point: &str) -> Result<(), io::Error> {
     }
 }
 
+fn is_file_a_container_image_archive(path: &Path) -> bool {
+    let output = Command::new("skopeo")
+        .arg("inspect")
+        .arg(format!("docker-archive:{}", path.display()))
+        .output();
+    
+    match output {
+        Ok(result) => result.status.success(),
+        Err(_) => false,
+    }
+}
+
+
+fn list_container_image_archives(dir_path: &str) -> std::io::Result<Vec<String>> {
+    let mut images = Vec::new();
+    
+    for entry in std::fs::read_dir(dir_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        
+        if path.extension().map_or(false, |ext| ext == "tar") {
+            if is_file_a_container_image_archive(&path) {
+                images.push(path.display().to_string());
+            }
+        }
+    }
+    
+    Ok(images)
+}
+
+fn create_container_image_archives(archive_paths: Vec<String>) -> Result<Vec<ImageArchive>, Box<dyn std::error::Error>> {
+    archive_paths
+        .into_iter()
+        .map(|archive_path| {
+            let metadata = fs::metadata(&archive_path)?;
+            let archive_size_bytes = metadata.len() as i64;
+            
+            let mut file = fs::File::open(&archive_path)?;
+            let mut hasher = Sha256::new();
+            io::copy(&mut file, &mut hasher)?;
+            let hash_bytes = hasher.finalize();
+            let hash_str = hex::encode(hash_bytes);
+            
+            Ok(ImageArchive {
+                file_path: archive_path,
+                file_size_bytes: archive_size_bytes,
+                sha256_checksum: hash_str,
+            })
+        })
+        .collect()
+}
+
 #[tonic::async_trait]
 impl Ormos for MyOrmos {
     async fn list_usb_devices(
@@ -207,6 +261,25 @@ impl Ormos for MyOrmos {
                 Ok(Response::new(response))
             }
         }
+    }
+
+    async fn list_image_archives(
+        &self,
+        request: Request<ListImageArchivesRequest>,
+    ) -> Result<Response<ListImageArchivesResponse>, Status> {
+        let req = request.into_inner();
+        let path = if req.path.is_empty() {
+            "/mnt/usb".to_string() // Default mount point
+        } else {
+            req.path
+        };
+        let container_image_archive_paths = list_container_image_archives(&path)?;
+         let image_archives = create_container_image_archives(container_image_archive_paths)
+            .map_err(|e| Status::internal(format!("Failed to create image archive response: {}", e)))?;
+        let response = ListImageArchivesResponse {
+            image_archives,
+        };
+        Ok(Response::new(response))
     }
 }
 
