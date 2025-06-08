@@ -1,6 +1,6 @@
 use tonic::{transport::Server, Request, Response, Status};
 use skopos::ormos_server::{Ormos, OrmosServer};
-use skopos::{ListUsbDevicesRequest, ListUsbDevicesResponse, UsbDevice, MountUsbDeviceRequest, MountUsbDeviceResponse, UnmountUsbDeviceRequest, UnmountUsbDeviceResponse, ListImageArchivesRequest, ListImageArchivesResponse, ImageArchive};
+use skopos::{ListUsbDevicesRequest, ListUsbDevicesResponse, UsbDevice, MountUsbDeviceRequest, MountUsbDeviceResponse, UnmountUsbDeviceRequest, UnmountUsbDeviceResponse, ListImageArchivesRequest, ListImageArchivesResponse, ImageArchive, LoadImageArchiveRequest, LoadImageArchiveResponse};
 use std::io;
 use std::fs;
 use std::process::Command;
@@ -146,7 +146,6 @@ fn is_file_a_container_image_archive(path: &Path) -> bool {
     }
 }
 
-
 fn list_container_image_archives(dir_path: &str) -> std::io::Result<Vec<String>> {
     let mut images = Vec::new();
     
@@ -186,6 +185,24 @@ fn create_container_image_archives(archive_paths: Vec<String>) -> Result<Vec<Ima
         .collect()
 }
 
+fn load_container_image_archive(path: &Path, image_name: &str, image_tag: &str) -> Result<(), io::Error> {
+    let output = Command::new("skopeo")
+        .arg("copy")
+        .arg(format!("docker-archive:{}", path.display()))
+        .arg(format!("docker://localhost:5000/{}:{}", image_name, image_tag))
+        .output()?;
+    
+    if output.status.success() {
+        println!("Successfully loaded {}", path.display());
+        Ok(())
+    }
+    else {
+        let error_msg = String::from_utf8_lossy(&output.stderr);
+        eprintln!("Loading image failed: {}", error_msg);
+        Err(io::Error::new(io::ErrorKind::Other, error_msg.to_string()))
+    }
+}
+
 #[tonic::async_trait]
 impl Ormos for MyOrmos {
     async fn list_usb_devices(
@@ -211,7 +228,7 @@ impl Ormos for MyOrmos {
         let req = request.into_inner();
         let device_path = req.device_path;
         let mount_point = if req.mount_point.is_empty() {
-            "/mnt/usb".to_string() // Default mount point
+            "/mnt/usb".to_string()
         } else {
             req.mount_point
         };
@@ -240,7 +257,7 @@ impl Ormos for MyOrmos {
     ) -> Result<Response<UnmountUsbDeviceResponse>, Status> {
         let req = request.into_inner();
         let mount_point = if req.mount_point.is_empty() {
-            "/mnt/usb".to_string() // Default mount point
+            "/mnt/usb".to_string()
         } else {
             req.mount_point
         };
@@ -269,7 +286,7 @@ impl Ormos for MyOrmos {
     ) -> Result<Response<ListImageArchivesResponse>, Status> {
         let req = request.into_inner();
         let path = if req.path.is_empty() {
-            "/mnt/usb".to_string() // Default mount point
+            "/mnt/usb".to_string()
         } else {
             req.path
         };
@@ -280,6 +297,31 @@ impl Ormos for MyOrmos {
             image_archives,
         };
         Ok(Response::new(response))
+    }
+
+    async fn load_image_archive(
+        &self,
+        request: Request<LoadImageArchiveRequest>,
+    ) -> Result<Response<LoadImageArchiveResponse>, Status> {
+        let req = request.into_inner();
+        let file_path = req.file_path;
+        
+        match load_container_image_archive(Path::new(&file_path), &req.image_name, &req.image_tag) {
+            Ok(()) => {
+                let response = LoadImageArchiveResponse {
+                    is_success: true,
+                    error_message: String::new(),
+                };
+                Ok(Response::new(response))
+            }
+            Err(e) => {
+                let response = LoadImageArchiveResponse {
+                    is_success: false,
+                    error_message: e.to_string(),
+                };
+                Ok(Response::new(response))
+            }
+        }
     }
 }
 
