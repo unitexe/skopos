@@ -1,6 +1,12 @@
 # skopos
 A gRPC server that facilitates provisioning and updating containers.
 
+It uses [skopeo](https://github.com/containers/skopeo) under the hood for inspecting image archives and copying them from mass storage to local registry.
+
+## Naming
+* Skopos is pronounced as skop-os' and means an observer, a watchman
+* Ormos (one of the skopos services) means archive keeper in the [Magic: The Gathering](https://mtg.fandom.com/wiki/Magic:_The_Gathering) card game
+
 ## Usage
 ### List Services
 Replace IP address accordingly.
