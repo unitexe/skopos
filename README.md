@@ -69,3 +69,9 @@ Replace IP address accordingly.
 ```bash
 grpcurl -plaintext -import-path ./proto -proto ormos.proto -d '{"mount_point": "/mnt/usb"}' '10.0.0.42:50052' unit.containers.v0.Ormos.UnmountUsbDevice
 ```
+
+### Copy Container Image Archive to Local Registry
+Replace IP address accordingly.
+```bash
+grpcurl -plaintext -import-path ./proto -proto ormos.proto -d '{"file_path": "/mnt/usb/alpine-arm64.tar", "image_name": "alpine", "image_tag": "latest"}' '10.0.0.42:50052' unit.containers.v0.Ormos.LoadImageArchive
+```
