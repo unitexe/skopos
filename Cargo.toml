@@ -10,6 +10,8 @@ sha2 = "0.10.9"
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 tonic = "0.13.1"
 tonic-reflection = "0.13.1"
+zbus = "5.7.1"
+zbus_systemd = { version = "0.25701.0", features = ["systemd1"] }
 
 [build-dependencies]
 tonic-build = "0.13.1"

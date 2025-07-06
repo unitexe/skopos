@@ -1,11 +1,13 @@
 use tonic::{transport::Server, Request, Response, Status};
 use skopos::ormos_server::{Ormos, OrmosServer};
-use skopos::{ListUsbDevicesRequest, ListUsbDevicesResponse, UsbDevice, MountUsbDeviceRequest, MountUsbDeviceResponse, UnmountUsbDeviceRequest, UnmountUsbDeviceResponse, ListImageArchivesRequest, ListImageArchivesResponse, ImageArchive, LoadImageArchiveRequest, LoadImageArchiveResponse, InspectImageArchiveRequest, InspectImageArchiveResponse};
+use skopos::{ListUsbDevicesRequest, ListUsbDevicesResponse, UsbDevice, MountUsbDeviceRequest, MountUsbDeviceResponse, UnmountUsbDeviceRequest, UnmountUsbDeviceResponse, ListImageArchivesRequest, ListImageArchivesResponse, ImageArchive, LoadImageArchiveRequest, LoadImageArchiveResponse, InspectImageArchiveRequest, InspectImageArchiveResponse, DoPodmanAutoUpdateRequest, DoPodmanAutoUpdateResponse};
 use std::io;
 use std::fs;
 use std::process::Command;
 use std::path::Path;
 use sha2::{Sha256, Digest};
+use zbus_systemd::systemd1::ManagerProxy;
+use zbus::Connection;
 
 pub mod skopos {
     tonic::include_proto!("unit.containers.v0");
@@ -365,6 +367,27 @@ impl Ormos for MyOrmos {
                 Ok(Response::new(response))
             }
         }
+    }
+
+    async fn do_podman_auto_update(
+        &self,
+        _request: Request<DoPodmanAutoUpdateRequest>,
+    ) -> Result<Response<DoPodmanAutoUpdateResponse>, Status> {
+        let connection = Connection::system().await
+            .map_err(|e| Status::internal(format!("Failed to connect to system bus: {}", e)))?;
+
+        let manager = ManagerProxy::new(&connection).await
+            .map_err(|e| Status::internal(format!("Failed to create manager proxy: {}", e)))?;
+
+        let _job_path = manager
+            .start_unit("podman-auto-update.service".to_string(), "replace".to_string())
+            .await
+            .map_err(|e| Status::internal(format!("Failed to start podman-auto-update service: {}", e)))?;
+
+        let response = DoPodmanAutoUpdateResponse {
+            is_success: true,
+        };
+        Ok(Response::new(response))
     }
 }
 

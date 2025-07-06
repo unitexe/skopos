@@ -10,6 +10,8 @@ service Ormos {
   rpc ListImageArchives (ListImageArchivesRequest) returns (ListImageArchivesResponse) {}
   rpc LoadImageArchive (LoadImageArchiveRequest) returns (LoadImageArchiveResponse) {}
   rpc InspectImageArchive (InspectImageArchiveRequest) returns (InspectImageArchiveResponse) {}
+
+  rpc DoPodmanAutoUpdate (DoPodmanAutoUpdateRequest) returns (DoPodmanAutoUpdateResponse) {}
 }
 
 message MountUsbDeviceRequest {
@@ -76,4 +78,10 @@ message InspectImageArchiveResponse {
   bool is_success = 1;
   string stdout = 2;
   string stderr = 3;
+}
+
+message DoPodmanAutoUpdateRequest {}
+
+message DoPodmanAutoUpdateResponse {
+  bool is_success = 1;
 }
