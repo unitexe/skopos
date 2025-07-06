@@ -136,12 +136,14 @@ fn unmount_usb_device(mount_point: &str) -> Result<(), io::Error> {
     }
 }
 
-fn is_file_a_container_image_archive(path: &Path) -> bool {
+const SUPPORTED_TRANSPORTS: &[&str] = &["docker-archive", "oci-archive"];
+
+fn does_file_use_supported_transport(path: &Path, transport: &str) -> bool {
     let output = Command::new("skopeo")
         .arg("inspect")
-        .arg(format!("docker-archive:{}", path.display()))
+        .arg(format!("{}:{}", transport, path.display()))
         .output();
-    
+
     match output {
         Ok(result) => result.status.success(),
         Err(_) => false,
@@ -156,8 +158,10 @@ fn list_container_image_archives(dir_path: &str) -> std::io::Result<Vec<String>>
         let path = entry.path();
         
         if path.extension().map_or(false, |ext| ext == "tar") {
-            if is_file_a_container_image_archive(&path) {
-                images.push(path.display().to_string());
+            for transport in SUPPORTED_TRANSPORTS {
+                if does_file_use_supported_transport(&path, transport) {
+                    images.push(path.display().to_string())
+                }
             }
         }
     }
@@ -165,10 +169,10 @@ fn list_container_image_archives(dir_path: &str) -> std::io::Result<Vec<String>>
     Ok(images)
 }
 
-fn inspect_container_image_archive(path: &Path) -> std::io::Result<String> {
+fn try_inspect_with_transport(path: &Path, transport: &str) -> std::io::Result<String> {
     let output = Command::new("skopeo")
         .arg("inspect")
-        .arg(format!("docker-archive:{}", path.display()))
+        .arg(format!("{}:{}", transport, path.display()))
         .output()?;
 
     if output.status.success() {
@@ -176,9 +180,25 @@ fn inspect_container_image_archive(path: &Path) -> std::io::Result<String> {
         Ok(inspect_msg.to_string())
     } else {
         let error_msg = String::from_utf8_lossy(&output.stderr);
-        eprintln!("Insepct failed: {}", error_msg);
         Err(io::Error::new(io::ErrorKind::Other, error_msg.to_string()))
     }
+}
+
+fn inspect_container_image_archive(path: &Path) -> std::io::Result<String> {
+    let mut errors = Vec::new();
+    
+    for transport in SUPPORTED_TRANSPORTS {
+        match try_inspect_with_transport(path, transport) {
+            Ok(output) => return Ok(output),
+            Err(e) => {
+                errors.push(format!("{}: {}", transport, e));
+            }
+        }
+    }
+    
+    let combined_error = format!("Failed with all transports: {}", errors.join(", "));
+    eprintln!("Inspect failed: {}", combined_error);
+    Err(io::Error::new(io::ErrorKind::Other, combined_error))
 }
 
 fn create_container_image_archives(archive_paths: Vec<String>) -> Result<Vec<ImageArchive>, Box<dyn std::error::Error>> {
@@ -203,22 +223,37 @@ fn create_container_image_archives(archive_paths: Vec<String>) -> Result<Vec<Ima
         .collect()
 }
 
-fn load_container_image_archive(path: &Path, image_name: &str, image_tag: &str) -> Result<(), io::Error> {
+fn try_load_with_transport(path: &Path, transport: &str, image_name: &str, image_tag: &str) -> Result<(), io::Error> {
     let output = Command::new("skopeo")
         .arg("copy")
-        .arg(format!("docker-archive:{}", path.display()))
+        .arg(format!("{}:{}", transport, path.display()))
         .arg(format!("docker://localhost:5000/{}:{}", image_name, image_tag))
         .output()?;
     
     if output.status.success() {
-        println!("Successfully loaded {}", path.display());
+        println!("Successfully loaded {} using {} transport", path.display(), transport);
         Ok(())
-    }
-    else {
+    } else {
         let error_msg = String::from_utf8_lossy(&output.stderr);
-        eprintln!("Loading image failed: {}", error_msg);
         Err(io::Error::new(io::ErrorKind::Other, error_msg.to_string()))
     }
+}
+
+fn load_container_image_archive(path: &Path, image_name: &str, image_tag: &str) -> Result<(), io::Error> {
+    let mut errors = Vec::new();
+    
+    for transport in SUPPORTED_TRANSPORTS {
+        match try_load_with_transport(path, transport, image_name, image_tag) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                errors.push(format!("{}: {}", transport, e));
+            }
+        }
+    }
+    
+    let combined_error = format!("Failed to load with all transports: {}", errors.join(", "));
+    eprintln!("Loading image failed: {}", combined_error);
+    Err(io::Error::new(io::ErrorKind::Other, combined_error))
 }
 
 #[tonic::async_trait]
